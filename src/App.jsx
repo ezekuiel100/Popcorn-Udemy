@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import StarRating from "./StarRating";
+import { useMovie } from "./useMovie";
 
 const KEY = "313d48cc";
 
@@ -7,13 +8,15 @@ const average = (arr) =>
   arr.reduce((acc, cur, i, arr) => acc + cur / arr.length, 0);
 
 export default function App() {
-  const [movies, setMovies] = useState([]);
-  const [watched, setWatched] = useState([]);
-  const [query, setQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [userRating, setUserRating] = useState(0);
+  const [query, setQuery] = useState("");
+  const { movies, isLoading, error } = useMovie(query, handleCloseMovie);
+
+  const [watched, setWatched] = useState(function () {
+    const storedValue = localStorage.getItem("watched");
+    return JSON.parse(storedValue);
+  });
 
   function handleCloseMovie() {
     setSelectedId("");
@@ -32,46 +35,12 @@ export default function App() {
     setWatched((watched) => watched.filter((movie) => movie.imdbID !== id));
   }
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function fetchMovies() {
-      try {
-        setIsLoading(true);
-        setError("");
-
-        const res = await fetch(
-          `http://www.omdbapi.com/?apikey=${KEY}&s=${query}`,
-          { signal: controller.signal }
-        );
-
-        const data = await res.json();
-
-        if (data.Response === "False") {
-          throw new Error("Movie not found ");
-        }
-
-        setMovies(data.Search);
-      } catch (err) {
-        if (err.name != "AbortError") {
-          setError(err.message);
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    if (query.length < 3) {
-      setMovies([]);
-      setError("");
-    }
-
-    fetchMovies();
-
-    return function () {
-      controller.abort();
-    };
-  }, [query]);
+  useEffect(
+    function () {
+      localStorage.setItem("watched", JSON.stringify(watched));
+    },
+    [watched]
+  );
 
   return (
     <>
@@ -127,6 +96,27 @@ function Nav({ children, movies }) {
 }
 
 function Search({ query, onSetQuery }) {
+  const inputEl = useRef(null);
+
+  useEffect(
+    function () {
+      function callback(e) {
+        if (document.activeElement === inputEl.current) return;
+
+        if (e.code === "Enter") {
+          inputEl.current.focus();
+          onSetQuery("");
+        }
+      }
+      document.addEventListener("keydown", callback);
+
+      return function () {
+        document.removeEventListener("keydown", callback);
+      };
+    },
+    [onSetQuery]
+  );
+
   return (
     <input
       className="search"
@@ -134,6 +124,7 @@ function Search({ query, onSetQuery }) {
       placeholder="Search movies..."
       value={query}
       onChange={(e) => onSetQuery(e.target.value)}
+      ref={inputEl}
     />
   );
 }
